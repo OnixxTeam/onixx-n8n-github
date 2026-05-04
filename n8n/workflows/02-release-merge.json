@@ -1,0 +1,73 @@
+{
+  "name": "02 Release merge",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "release-merge",
+        "responseMode": "onReceived",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "id": "a2000000-0000-0000-0000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "release-merge"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "b2000000-0000-0000-0000-000000000001",
+              "leftValue": "={{ (() => { const b = $json.body; return b.action === 'closed' && b.pull_request && b.pull_request.merged === true && b.pull_request.base && b.pull_request.base.ref === 'main'; })() }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a2000000-0000-0000-0000-000000000002",
+      "name": "Is merge to main?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $('Webhook').item.json.body;\nconst pr = b.pull_request;\nconst labels = (pr.labels || []).map(l => l.name);\nconst bump = labels.includes('release:major') ? 'major'\n           : labels.includes('release:minor') ? 'minor'\n           : 'patch';\nconst args = {\n  surface: 'release-merge',\n  repoOwner: b.repository.owner.login,\n  repoName: b.repository.name,\n  repoFull: b.repository.full_name,\n  senderLogin: b.sender && b.sender.login,\n  senderType: b.sender && b.sender.type,\n  prNumber: pr.number,\n  prTitle: pr.title,\n  bump,\n  promptB64: '',\n};\nreturn [{ json: { argsB64: Buffer.from(JSON.stringify(args), 'utf8').toString('base64') } }];\n"
+      },
+      "id": "a2000000-0000-0000-0000-000000000003",
+      "name": "Build args",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "resource": "command",
+        "command": "=exec n8n-manager-dispatch \"{{ $json.argsB64 }}\"\n"
+      },
+      "id": "a2000000-0000-0000-0000-000000000004",
+      "name": "Dispatch via manager",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": { "sshPrivateKey": { "id": "REPLACE_ME", "name": "manager-agent SSH" } }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Is merge to main?", "type": "main", "index": 0 }]] },
+    "Is merge to main?": { "main": [[{ "node": "Build args", "type": "main", "index": 0 }], []] },
+    "Build args": { "main": [[{ "node": "Dispatch via manager", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}

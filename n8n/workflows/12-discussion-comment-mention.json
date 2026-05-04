@@ -1,0 +1,119 @@
+{
+  "name": "12 Discussion comment mention",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "discussion-comment-mention",
+        "responseMode": "onReceived",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "id": "ac000000-0000-0000-0000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "discussion-comment-mention"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "bc000000-0000-0000-0000-000000000001",
+              "leftValue": "={{ (() => { const b = $json.body; if (b.action !== 'created') return false; if (!b.comment || !b.discussion) return false; if (b.sender && b.sender.type === 'Bot') return false; const text = (b.comment && b.comment.body) || ''; if (!text.trim()) return false; return /@[a-z0-9-]+/i.test(text); })() }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ac000000-0000-0000-0000-000000000002",
+      "name": "Has @-mention?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.github.com/orgs/{{ $env.N8N_ALLOWED_ORG || 'onymchat' }}/members/{{ $json.body.sender.login }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github+json" },
+            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+          ]
+        },
+        "options": { "response": { "response": { "fullResponse": true, "neverError": true } } }
+      },
+      "id": "ac000000-0000-0000-0000-000000000003",
+      "name": "Org membership",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [600, 300],
+      "credentials": { "githubApi": { "id": "REPLACE_ME", "name": "manager GitHub" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "bc000000-0000-0000-0000-000000000020",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 204,
+              "operator": { "type": "number", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ac000000-0000-0000-0000-000000000004",
+      "name": "Is org member?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $('Webhook').item.json.body;\nconst d = b.discussion;\nconst c = b.comment;\nconst body = c.body || '';\nconst m = body.match(/@([a-zA-Z0-9-]+)/);\nconst mentionedLogin = m ? m[1] : '';\nif (!d.node_id) {\n  throw new Error('discussion.node_id missing');\n}\n// Threading: top-level mention → reply via replyToId; nested → fall back\n// to a new top-level comment (parent's node_id isn't in the payload).\nconst isTopLevel = !c.parent_id;\nconst replyToNodeId = isTopLevel ? c.node_id : '';\nconst instruction = mentionedLogin ? body.replace(new RegExp('@' + mentionedLogin + '\\\\b', 'i'), '').trim() : body;\nconst args = {\n  surface: 'discussion-comment',\n  repoOwner: b.repository.owner.login,\n  repoName: b.repository.name,\n  repoFull: b.repository.full_name,\n  senderLogin: b.sender && b.sender.login,\n  senderType: b.sender && b.sender.type,\n  discussionNumber: d.number,\n  discussionTitle: d.title,\n  discussionBody: d.body || '',\n  discussionUrl: d.html_url,\n  discussionNodeId: d.node_id,\n  discussionCategory: (d.category && d.category.name) || '',\n  commentId: c.id,\n  commentBody: body,\n  commentUrl: c.html_url,\n  replyToNodeId,\n  mentionedLogin,\n  title: d.title,\n  bodyText: body,\n};\nconst threadingNote = replyToNodeId\n  ? `Your reply will be posted as a threaded reply.`\n  : `Your reply will be posted as a new top-level comment on the discussion (the original mention was a reply-to-a-reply, which GitHub doesn't support nesting further).`;\nconst prompt = `@${args.senderLogin} mentioned you in a comment on discussion #${args.discussionNumber} in category \"${args.discussionCategory}\".\nRepo: ${args.repoFull}. URL: ${args.discussionUrl}.\n${threadingNote}\n\nDiscussion title: ${args.discussionTitle}\nDiscussion body (for context):\n---\n${args.discussionBody}\n---\n\nLatest comment from @${args.senderLogin}:\n---\n${args.commentBody}\n---\n\nInstruction (mention stripped):\n${instruction}\n\nReply in the discussion thread. Conversational only — no code changes. Markdown supported.\n\nReturn ONLY the reply body. No preamble.\n`;\nargs.promptB64 = Buffer.from(prompt, 'utf8').toString('base64');\nreturn [{ json: { argsB64: Buffer.from(JSON.stringify(args), 'utf8').toString('base64') } }];\n"
+      },
+      "id": "ac000000-0000-0000-0000-000000000005",
+      "name": "Build args",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "resource": "command",
+        "command": "=exec n8n-manager-dispatch \"{{ $json.argsB64 }}\"\n"
+      },
+      "id": "ac000000-0000-0000-0000-000000000006",
+      "name": "Dispatch via manager",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [1100, 300],
+      "credentials": { "sshPrivateKey": { "id": "REPLACE_ME", "name": "manager-agent SSH" } }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Has @-mention?", "type": "main", "index": 0 }]] },
+    "Has @-mention?": { "main": [[{ "node": "Org membership", "type": "main", "index": 0 }], []] },
+    "Org membership": { "main": [[{ "node": "Is org member?", "type": "main", "index": 0 }]] },
+    "Is org member?": { "main": [[{ "node": "Build args", "type": "main", "index": 0 }], []] },
+    "Build args": { "main": [[{ "node": "Dispatch via manager", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}

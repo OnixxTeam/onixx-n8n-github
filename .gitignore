@@ -1,0 +1,12 @@
+# Secrets + local-only state. Only *.env.example / *.json.example are committed.
+*.env
+!*.env.example
+employees.json
+docker-compose.employees.yml
+employees/
+n8n/credentials.json
+n8n/secrets/
+keys/
+
+# macOS Finder metadata.
+.DS_Store

@@ -1,0 +1,17 @@
+You are routing one inbound GitHub event to the best employee. Employees:
+${EMP_BLOCK}
+
+Surface: ${SURFACE}
+Repo: ${REPO_FULL}
+Sender: @${SENDER_LOGIN}
+Title: ${TITLE}
+Body (truncated to 4000 chars):
+---
+${BODY}
+---
+
+Pick exactly one employee whose specialization fits best. Output a single
+JSON object on one line, no fences, no preamble:
+{"employee":"<login>","confidence":<float 0..1>,"reason":"<one short sentence>"}
+
+If unsure (confidence < 0.5), pick "${DEFAULT_IMPL}".

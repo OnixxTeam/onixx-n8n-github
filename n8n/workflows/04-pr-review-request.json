@@ -1,0 +1,73 @@
+{
+  "name": "04 PR review request",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pr-review-request",
+        "responseMode": "onReceived",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "id": "a4000000-0000-0000-0000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "pr-review-request"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "b4000000-0000-0000-0000-000000000001",
+              "leftValue": "={{ (() => { const b = $json.body; if (b.action !== 'review_requested') return false; if (!b.pull_request || !b.requested_reviewer) return false; if (b.sender && b.sender.type === 'Bot') return false; return true; })() }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a4000000-0000-0000-0000-000000000002",
+      "name": "Is review_requested?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $('Webhook').item.json.body;\nconst pr = b.pull_request;\nconst args = {\n  surface: 'pr-review-requested',\n  repoOwner: b.repository.owner.login,\n  repoName: b.repository.name,\n  repoFull: b.repository.full_name,\n  senderLogin: b.sender && b.sender.login,\n  senderType: b.sender && b.sender.type,\n  prNumber: pr.number,\n  prTitle: pr.title,\n  prBody: pr.body || '',\n  prHeadRef: pr.head && pr.head.ref,\n  prBaseRef: pr.base && pr.base.ref,\n  prHeadSha: pr.head && pr.head.sha,\n  reviewerLogin: (b.requested_reviewer && b.requested_reviewer.login) || '',\n  title: pr.title,\n  bodyText: pr.body || '',\n};\nconst prompt = `Review PR #${args.prNumber}: ${args.prTitle}\n\nPR body:\n---\n${args.prBody}\n---\n\nOutput a one-line verdict (APPROVE / REQUEST_CHANGES / COMMENT) followed by bullet findings with \\`file:line\\` refs. Keep it under 30 lines. The diff is appended after a \"=== DIFF ===\" line by the agent script before claude runs.\n`;\nargs.promptB64 = Buffer.from(prompt, 'utf8').toString('base64');\nreturn [{ json: { argsB64: Buffer.from(JSON.stringify(args), 'utf8').toString('base64') } }];\n"
+      },
+      "id": "a4000000-0000-0000-0000-000000000003",
+      "name": "Build args",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "resource": "command",
+        "command": "=exec n8n-manager-dispatch \"{{ $json.argsB64 }}\"\n"
+      },
+      "id": "a4000000-0000-0000-0000-000000000004",
+      "name": "Dispatch via manager",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": { "sshPrivateKey": { "id": "REPLACE_ME", "name": "manager-agent SSH" } }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Is review_requested?", "type": "main", "index": 0 }]] },
+    "Is review_requested?": { "main": [[{ "node": "Build args", "type": "main", "index": 0 }], []] },
+    "Build args": { "main": [[{ "node": "Dispatch via manager", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}

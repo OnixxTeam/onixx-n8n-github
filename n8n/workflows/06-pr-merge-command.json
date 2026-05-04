@@ -1,0 +1,142 @@
+{
+  "name": "06 PR merge command",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pr-merge",
+        "responseMode": "onReceived",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "id": "a6000000-0000-0000-0000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "pr-merge"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "b6000000-0000-0000-0000-000000000001",
+              "leftValue": "={{ (() => { const b = $json.body; if (b.action !== 'created') return false; if (!b.issue || !b.issue.pull_request) return false; if (b.sender && b.sender.type === 'Bot') return false; const text = ((b.comment && b.comment.body) || '').trim(); return /^\\/merge\\b/i.test(text); })() }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a6000000-0000-0000-0000-000000000002",
+      "name": "Is /merge?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.github.com/orgs/{{ $env.N8N_ALLOWED_ORG || 'onymchat' }}/members/{{ $json.body.sender.login }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github+json" },
+            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+          ]
+        },
+        "options": { "response": { "response": { "fullResponse": true, "neverError": true } } }
+      },
+      "id": "a6000000-0000-0000-0000-000000000003",
+      "name": "Org membership",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [600, 300],
+      "credentials": { "githubApi": { "id": "REPLACE_ME", "name": "manager GitHub" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "b6000000-0000-0000-0000-000000000020",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 204,
+              "operator": { "type": "number", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a6000000-0000-0000-0000-000000000004",
+      "name": "Is org member?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.github.com/repos/{{ $('Webhook').item.json.body.repository.full_name }}/pulls/{{ $('Webhook').item.json.body.issue.number }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github+json" },
+            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a6000000-0000-0000-0000-000000000005",
+      "name": "Get PR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 300],
+      "credentials": { "githubApi": { "id": "REPLACE_ME", "name": "manager GitHub" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $('Webhook').item.json.body;\nconst pr = $json;\nconst text = (b.comment.body || '').trim();\nconst m = text.match(/^\\/merge\\s+(squash|rebase|merge)\\b/i);\nconst mergeMethod = m ? m[1].toLowerCase() : 'squash';\nconst senderLogin = b.sender && b.sender.login;\nconst allowed = (($env.MERGE_AUTHORIZED_LOGINS || 'alexpovstin,gramyzer').split(',').map(s => s.trim()).filter(Boolean));\nif (!allowed.includes(senderLogin)) {\n  return [];\n}\nconst args = {\n  surface: 'pr-merge',\n  repoOwner: b.repository.owner.login,\n  repoName: b.repository.name,\n  repoFull: b.repository.full_name,\n  senderLogin,\n  senderType: b.sender && b.sender.type,\n  prNumber: b.issue.number,\n  prTitle: pr.title,\n  mergeMethod,\n  promptB64: '',\n};\nreturn [{ json: { argsB64: Buffer.from(JSON.stringify(args), 'utf8').toString('base64') } }];\n"
+      },
+      "id": "a6000000-0000-0000-0000-000000000006",
+      "name": "Build args",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "resource": "command",
+        "command": "=exec n8n-manager-dispatch \"{{ $json.argsB64 }}\"\n"
+      },
+      "id": "a6000000-0000-0000-0000-000000000007",
+      "name": "Dispatch via manager",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [1280, 300],
+      "credentials": { "sshPrivateKey": { "id": "REPLACE_ME", "name": "manager-agent SSH" } }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Is /merge?", "type": "main", "index": 0 }]] },
+    "Is /merge?": { "main": [[{ "node": "Org membership", "type": "main", "index": 0 }], []] },
+    "Org membership": { "main": [[{ "node": "Is org member?", "type": "main", "index": 0 }]] },
+    "Is org member?": { "main": [[{ "node": "Get PR", "type": "main", "index": 0 }], []] },
+    "Get PR": { "main": [[{ "node": "Build args", "type": "main", "index": 0 }]] },
+    "Build args": { "main": [[{ "node": "Dispatch via manager", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}

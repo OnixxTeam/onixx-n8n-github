@@ -1,0 +1,43 @@
+{
+  "_doc": "Canonical config for the manager + N employees model. Copy to employees.json (gitignored), edit, then ./bin/up.sh. The manager dispatcher reads this file from /etc/onym/employees.json (mounted into the manager container). The compose generator reads it to emit one service per employee. Adding/removing an employee = edit this file + ./bin/up.sh.",
+
+  "manager": {
+    "host": "manager-agent",
+    "port": 22,
+    "user": "agent",
+    "githubLogin": "onym-manager",
+    "_doc": "The manager's own GitHub identity. It posts a brief 'routed to @<employee>' comment on every dispatch so the audit trail is visible. Must be a member of N8N_ALLOWED_ORG. Needs a real PAT in manager.env (issues:RW, pull_requests:RW, contents:R, discussions:RW, read:org)."
+  },
+
+  "employees": {
+    "gramyzer": {
+      "host": "gramyzer-agent",
+      "port": 22,
+      "user": "agent",
+      "sshHostPort": 2201,
+      "githubLogin": "gramyzer",
+      "specialization": "Rust systems work, async runtime, n8n round-trip plumbing, infrastructure-as-code. Implementer by default — opens PRs in response to assignment / @-mention.",
+      "tags": ["rust", "tooling", "infra", "implementer"]
+    },
+
+    "onymyzer": {
+      "host": "onymyzer-agent",
+      "port": 22,
+      "user": "agent",
+      "sshHostPort": 2202,
+      "githubLogin": "onymyzer",
+      "specialization": "Code review, release engineering, version bumps, tag pushing. Reviewer by default — auto-assigned when an implementer-authored PR opens.",
+      "tags": ["review", "release", "reviewer"]
+    }
+  },
+
+  "defaults": {
+    "implementer": "gramyzer",
+    "reviewer": "onymyzer",
+    "humanQa": "your-github-handle",
+    "_doc": "Fallbacks the dispatcher uses when no explicit @-mention or assignee resolves to a known employee, and when the smoke-test issue (workflow 06) needs an assignee."
+  },
+
+  "mergeAuthorizedLogins": ["your-github-handle"],
+  "_mergeAuthorizedLoginsDoc": "Hard allowlist for /merge — destructive, so org membership alone is intentionally not enough. Subset of org members."
+}

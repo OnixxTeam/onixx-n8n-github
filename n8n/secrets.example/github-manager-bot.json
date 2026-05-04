@@ -1,0 +1,9 @@
+{
+  "name": "manager GitHub",
+  "type": "githubApi",
+  "data": {
+    "server": "https://api.github.com",
+    "user": "onym-manager",
+    "accessToken": "PASTE-GITHUB-APP-INSTALLATION-TOKEN-OR-FINE-GRAINED-PAT-HERE"
+  }
+}

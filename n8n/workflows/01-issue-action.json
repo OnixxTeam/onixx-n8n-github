@@ -1,0 +1,73 @@
+{
+  "name": "01 Issue action",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "qa-issue",
+        "responseMode": "onReceived",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "id": "a1000000-0000-0000-0000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "qa-issue"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "b1000000-0000-0000-0000-000000000001",
+              "leftValue": "={{ (() => { const b = $json.body; if (!['opened','reopened','labeled','assigned'].includes(b.action)) return false; if (!b.issue || b.issue.pull_request) return false; if (b.sender && b.sender.type === 'Bot') return false; const labels = (b.issue.labels || []).map(l => l.name); const hasLabel = labels.includes('agent-task'); const hasAssignee = (b.issue.assignees || []).length > 0; return hasLabel || hasAssignee; })() }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-0000-0000-000000000002",
+      "name": "Is candidate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $('Webhook').item.json.body;\nconst issue = b.issue;\nconst body = issue.body || '';\nconst assignees = (issue.assignees || []).map(a => a.login);\nconst args = {\n  surface: 'issue-action',\n  repoOwner: b.repository.owner.login,\n  repoName: b.repository.name,\n  repoFull: b.repository.full_name,\n  senderLogin: b.sender && b.sender.login,\n  senderType: b.sender && b.sender.type,\n  issueNumber: issue.number,\n  issueTitle: issue.title,\n  issueBody: body,\n  issueUrl: issue.html_url,\n  assigneeLogin: assignees[0] || '',\n  reviewerLogin: '',\n  title: issue.title,\n  bodyText: body,\n};\nconst prompt = `Issue #${args.issueNumber}: ${args.issueTitle}\n\n${args.issueBody}\n\nImplement a fix. Keep the change minimal and focused on the reported problem. Commit with a clear message and exit when done.\n`;\nargs.promptB64 = Buffer.from(prompt, 'utf8').toString('base64');\nreturn [{ json: { argsB64: Buffer.from(JSON.stringify(args), 'utf8').toString('base64') } }];\n"
+      },
+      "id": "a1000000-0000-0000-0000-000000000003",
+      "name": "Build args",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "resource": "command",
+        "command": "=exec n8n-manager-dispatch \"{{ $json.argsB64 }}\"\n"
+      },
+      "id": "a1000000-0000-0000-0000-000000000004",
+      "name": "Dispatch via manager",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": { "sshPrivateKey": { "id": "REPLACE_ME", "name": "manager-agent SSH" } }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Is candidate?", "type": "main", "index": 0 }]] },
+    "Is candidate?": { "main": [[{ "node": "Build args", "type": "main", "index": 0 }], []] },
+    "Build args": { "main": [[{ "node": "Dispatch via manager", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}

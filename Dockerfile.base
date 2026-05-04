@@ -1,0 +1,97 @@
+# onym-n8n dev-env base image.
+#
+# Built for linux/arm64 so it runs natively on the Apple Silicon Mac mini.
+# Rust + JDK + Android SDK (Gradle + platform/build-tools only, NO NDK).
+#
+# Android JNI builds are delegated to the Mac host via SSH, because Google
+# does not ship a linux-aarch64 Android NDK (only darwin-aarch64). Gradle
+# in this container picks up pre-built .so files from build/android/jniLibs/
+# that are produced on the host and tar-streamed back. See the remote-jnilibs
+# wrapper installed into the agent layer for details.
+#
+# This image is the foundation for the agent image; both qa-agent and
+# release-agent containers in docker-compose.dev.yml are built from
+# Dockerfile.agent which `FROM`s this one.
+
+FROM debian:trixie-slim
+
+ARG DEBIAN_FRONTEND=noninteractive
+# Debian trixie ships OpenJDK 21 as the default. AGP 8.7 + Gradle 8.10 both
+# support JDK 21 for Android builds, and the Android SDK cmdline-tools run
+# under it fine.
+ARG JDK_VERSION=21
+ARG ANDROID_CMDLINE_VERSION=11076708
+ARG ANDROID_PLATFORM=android-35
+ARG ANDROID_BUILD_TOOLS=35.0.0
+ARG RUST_VERSION=1.94.1
+
+ENV ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    CARGO_HOME=/cache/cargo \
+    RUSTUP_HOME=/cache/rustup \
+    GRADLE_USER_HOME=/cache/gradle \
+    PATH=/cache/cargo/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:$PATH
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl git unzip zip xz-utils \
+        openjdk-${JDK_VERSION}-jdk-headless \
+        gcc libc-dev pkg-config \
+        ruby ruby-dev make \
+        python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Android build-tools ships aapt2 as linux/amd64 only. On arm64 hosts (Apple
+# Silicon Mac mini) Docker Desktop's Rosetta handler can execute the binary,
+# but it needs the x86_64 dynamic linker + libstdc++ present inside the
+# container. Enable multiarch and install the minimum runtime so aapt2 runs
+# under emulation while the rest of the build stays native arm64.
+RUN dpkg --add-architecture amd64 \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libc6:amd64 libstdc++6:amd64 zlib1g:amd64 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Android command-line tools (Java bundle, arch-independent).
+RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
+    && curl -sSLo /tmp/cmdline.zip \
+        "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_VERSION}_latest.zip" \
+    && unzip -q /tmp/cmdline.zip -d ${ANDROID_HOME}/cmdline-tools \
+    && mv ${ANDROID_HOME}/cmdline-tools/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest \
+    && rm /tmp/cmdline.zip
+
+# Accept licenses and install SDK components (no NDK — delegated to host).
+# AGP 8.7.x defaults to build-tools 34.0.0 when the project doesn't pin
+# buildToolsVersion explicitly, so install that alongside the current target.
+# Gradle auto-install would otherwise try to write into /opt/android-sdk at
+# build time, which fails because /opt is root-owned.
+RUN yes | sdkmanager --licenses > /dev/null \
+    && sdkmanager --install \
+        "platform-tools" \
+        "platforms;${ANDROID_PLATFORM}" \
+        "platforms;android-34" \
+        "build-tools;${ANDROID_BUILD_TOOLS}" \
+        "build-tools;34.0.0" > /dev/null \
+    && chmod -R a+rX ${ANDROID_HOME}
+
+
+RUN apt-get update && apt-get install -y git-lfs && rm -rf /var/lib/apt/lists/*
+
+# Rust toolchain — native aarch64-unknown-linux-gnu host. No Android cross
+# targets: Rust→Android compilation happens on the Mac host where the NDK
+# toolchain exists.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --default-toolchain ${RUST_VERSION} --profile minimal \
+    && /cache/cargo/bin/rustup --version \
+    && /cache/cargo/bin/rustc --version --verbose
+
+# UTF-8 locale for fastlane (it refuses to run cleanly otherwise).
+# C.UTF-8 ships with glibc in trixie, no locale generation needed.
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
+
+# fastlane — arch-independent Ruby gem. Kept available for in-container
+# lanes (version sync, metadata generation, etc.); signing lanes still run
+# on the host where the keychain lives.
+RUN gem install --no-document fastlane
+
+WORKDIR /workspace
+CMD ["bash"]

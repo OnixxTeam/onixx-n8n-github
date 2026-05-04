@@ -1,0 +1,119 @@
+{
+  "name": "07 Issue mention",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "issue-mention",
+        "responseMode": "onReceived",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "id": "a7000000-0000-0000-0000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "issue-mention"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "b7000000-0000-0000-0000-000000000001",
+              "leftValue": "={{ (() => { const b = $json.body; if (b.action !== 'created') return false; if (!b.issue) return false; if (b.issue.pull_request) return false; if (b.sender && b.sender.type === 'Bot') return false; const text = ((b.comment && b.comment.body) || '').trim(); if (/^\\/(build|merge|review|fix)\\b/i.test(text)) return false; return /@[a-z0-9-]+/i.test(text); })() }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a7000000-0000-0000-0000-000000000002",
+      "name": "Is candidate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.github.com/orgs/{{ $env.N8N_ALLOWED_ORG || 'onymchat' }}/members/{{ $json.body.sender.login }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github+json" },
+            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+          ]
+        },
+        "options": { "response": { "response": { "fullResponse": true, "neverError": true } } }
+      },
+      "id": "a7000000-0000-0000-0000-000000000003",
+      "name": "Org membership",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [600, 300],
+      "credentials": { "githubApi": { "id": "REPLACE_ME", "name": "manager GitHub" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "b7000000-0000-0000-0000-000000000020",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 204,
+              "operator": { "type": "number", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a7000000-0000-0000-0000-000000000004",
+      "name": "Is org member?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $('Webhook').item.json.body;\nconst issue = b.issue;\nconst c = b.comment;\nconst body = (c && c.body) || '';\nconst m = body.match(/@([a-zA-Z0-9-]+)/);\nconst mentionedLogin = m ? m[1] : '';\nconst instruction = mentionedLogin ? body.replace(new RegExp('@' + mentionedLogin + '\\\\b', 'i'), '').trim() : body.trim();\nconst args = {\n  surface: 'issue-action',\n  repoOwner: b.repository.owner.login,\n  repoName: b.repository.name,\n  repoFull: b.repository.full_name,\n  senderLogin: b.sender && b.sender.login,\n  senderType: b.sender && b.sender.type,\n  issueNumber: issue.number,\n  issueTitle: issue.title,\n  issueBody: issue.body || '',\n  issueUrl: issue.html_url,\n  commentBody: body,\n  commentId: c && c.id,\n  mentionedLogin,\n  // No explicit reviewer — dispatcher uses defaults.reviewer.\n  reviewerLogin: '',\n  title: issue.title,\n  bodyText: instruction || (issue.body || ''),\n};\nconst prompt = `You were @-mentioned by @${args.senderLogin} on issue #${args.issueNumber}.\n\nIssue title: ${args.issueTitle}\n\nIssue body:\n---\n${args.issueBody}\n---\n\nInstruction from @${args.senderLogin}:\n---\n${instruction}\n---\n\nImplement the change. Keep it minimal and scoped. The workflow opens a PR (branch agent/issue-${args.issueNumber}) for you.\n`;\nargs.promptB64 = Buffer.from(prompt, 'utf8').toString('base64');\nreturn [{ json: { argsB64: Buffer.from(JSON.stringify(args), 'utf8').toString('base64') } }];\n"
+      },
+      "id": "a7000000-0000-0000-0000-000000000005",
+      "name": "Build args",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "resource": "command",
+        "command": "=exec n8n-manager-dispatch \"{{ $json.argsB64 }}\"\n"
+      },
+      "id": "a7000000-0000-0000-0000-000000000006",
+      "name": "Dispatch via manager",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [1080, 300],
+      "credentials": { "sshPrivateKey": { "id": "REPLACE_ME", "name": "manager-agent SSH" } }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Is candidate?", "type": "main", "index": 0 }]] },
+    "Is candidate?": { "main": [[{ "node": "Org membership", "type": "main", "index": 0 }], []] },
+    "Org membership": { "main": [[{ "node": "Is org member?", "type": "main", "index": 0 }]] },
+    "Is org member?": { "main": [[{ "node": "Build args", "type": "main", "index": 0 }], []] },
+    "Build args": { "main": [[{ "node": "Dispatch via manager", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}

@@ -1,0 +1,142 @@
+{
+  "name": "03 PR build comment",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pr-build-comment",
+        "responseMode": "onReceived",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "id": "a3000000-0000-0000-0000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "pr-build-comment"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "b3000000-0000-0000-0000-000000000001",
+              "leftValue": "={{ (() => { const b = $json.body; if (b.action !== 'created') return false; if (!b.issue || !b.issue.pull_request) return false; if (b.sender && b.sender.type === 'Bot') return false; const text = ((b.comment && b.comment.body) || '').trim(); return /^\\/build (ios|android)\\s*$/i.test(text); })() }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a3000000-0000-0000-0000-000000000002",
+      "name": "Is /build comment?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.github.com/orgs/{{ $env.N8N_ALLOWED_ORG || 'onymchat' }}/members/{{ $json.body.sender.login }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github+json" },
+            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+          ]
+        },
+        "options": { "response": { "response": { "fullResponse": true, "neverError": true } } }
+      },
+      "id": "a3000000-0000-0000-0000-000000000003",
+      "name": "Org membership",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [600, 300],
+      "credentials": { "githubApi": { "id": "REPLACE_ME", "name": "manager GitHub" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "b3000000-0000-0000-0000-000000000020",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 204,
+              "operator": { "type": "number", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a3000000-0000-0000-0000-000000000004",
+      "name": "Is org member?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.github.com/repos/{{ $('Webhook').item.json.body.repository.full_name }}/pulls/{{ $('Webhook').item.json.body.issue.number }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github+json" },
+            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a3000000-0000-0000-0000-000000000005",
+      "name": "Get PR (for head SHA)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 300],
+      "credentials": { "githubApi": { "id": "REPLACE_ME", "name": "manager GitHub" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $('Webhook').item.json.body;\nconst pr = $json;\nconst text = (b.comment.body || '').trim();\nconst m = text.match(/^\\/build\\s+(ios|android)/i);\nconst buildTarget = m ? m[1].toLowerCase() : '';\nconst args = {\n  surface: 'pr-build',\n  repoOwner: b.repository.owner.login,\n  repoName: b.repository.name,\n  repoFull: b.repository.full_name,\n  senderLogin: b.sender && b.sender.login,\n  senderType: b.sender && b.sender.type,\n  prNumber: b.issue.number,\n  buildTarget,\n  headSha: pr.head && pr.head.sha,\n  promptB64: '',\n};\nreturn [{ json: { argsB64: Buffer.from(JSON.stringify(args), 'utf8').toString('base64') } }];\n"
+      },
+      "id": "a3000000-0000-0000-0000-000000000006",
+      "name": "Build args",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "resource": "command",
+        "command": "=exec n8n-manager-dispatch \"{{ $json.argsB64 }}\"\n"
+      },
+      "id": "a3000000-0000-0000-0000-000000000007",
+      "name": "Dispatch via manager",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [1300, 300],
+      "credentials": { "sshPrivateKey": { "id": "REPLACE_ME", "name": "manager-agent SSH" } }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Is /build comment?", "type": "main", "index": 0 }]] },
+    "Is /build comment?": { "main": [[{ "node": "Org membership", "type": "main", "index": 0 }], []] },
+    "Org membership": { "main": [[{ "node": "Is org member?", "type": "main", "index": 0 }]] },
+    "Is org member?": { "main": [[{ "node": "Get PR (for head SHA)", "type": "main", "index": 0 }], []] },
+    "Get PR (for head SHA)": { "main": [[{ "node": "Build args", "type": "main", "index": 0 }]] },
+    "Build args": { "main": [[{ "node": "Dispatch via manager", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}

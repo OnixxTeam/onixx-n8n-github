@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Launches the onym-n8n stack on user login (combined with macOS
+  auto-login, this gives you "starts at boot" without admin or
+  LaunchDaemons). Install:
+
+    cp host/launchd/com.onym.n8n.plist ~/Library/LaunchAgents/
+    launchctl load -w ~/Library/LaunchAgents/com.onym.n8n.plist
+
+  Edit WorkingDirectory + the two log paths to match your home
+  directory. Docker Desktop / OrbStack must be set to auto-start at
+  login (their preferences UI). The wrapper script handles waiting for
+  the daemon to be ready, so the plist just needs RunAtLoad.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.onym.n8n</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/REPLACE_ME/Developer/onym-n8n</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/REPLACE_ME/Developer/onym-n8n/host/launchd/onym-n8n-launchd.sh</string>
+    </array>
+
+    <!-- Run once at login. The wrapper itself blocks until docker is up. -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Don't auto-restart — `docker compose up -d` is itself idempotent
+         and the containers have restart: unless-stopped. If you want
+         the wrapper to retry on failure (e.g. Docker Desktop crashed),
+         set this to true. -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- Inherit a sane PATH so docker is findable. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/REPLACE_ME/logs/n8n.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/REPLACE_ME/logs/n8n.err.log</string>
+</dict>
+</plist>
