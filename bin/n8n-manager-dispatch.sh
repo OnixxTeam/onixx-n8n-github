@@ -67,6 +67,15 @@ set -o pipefail
 CONFIG="${EMPLOYEES_CONFIG:-/etc/onym/employees.json}"
 SSH_KEY="${MANAGER_SSH_KEY:-$HOME/.ssh/manager-fanout}"
 
+# n8n's SSH session doesn't inherit the container's GITHUB_TOKEN, and
+# `gh auth login --with-token` at first-run is best-effort (errors
+# swallowed). Load the token from ~/.gh-token (written by first-run.sh)
+# so `gh issue/pr/api` calls below always have credentials.
+if [ -z "${GH_TOKEN:-}" ] && [ -r "$HOME/.gh-token" ]; then
+  GH_TOKEN=$(cat "$HOME/.gh-token")
+  export GH_TOKEN
+fi
+
 ARGS_B64="${1:-}"
 if [ -z "$ARGS_B64" ]; then
   echo "ERROR: usage: n8n-manager-dispatch <args-b64>" >&2
