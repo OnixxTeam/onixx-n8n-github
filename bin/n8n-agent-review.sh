@@ -24,8 +24,11 @@ if [ -z "$PR" ] || [ -z "$BASE" ] || [ -z "$SHA" ] || [ -z "$PROMPT_B64" ]; then
   exit 2
 fi
 
-PRIMARY="$HOME/workspace"
-WT_ROOT="$HOME/workspace-worktrees"
+# cwd is the per-repo workspace established by n8n-agent-prep
+# (~/workspaces/<owner>__<repo>); worktrees go in a sibling dir so they
+# stay scoped to that repo.
+PRIMARY="$PWD"
+WT_ROOT="${PRIMARY}-worktrees"
 WT_DIR="$WT_ROOT/review-pr-$PR"
 PROMPT_FILE="/tmp/review-$PR.txt"
 BODY_FILE="/tmp/review-body-$PR.md"
@@ -36,7 +39,10 @@ cleanup() {
   git worktree prune >/dev/null 2>&1
 }
 
-cd "$PRIMARY" || { echo "ERROR: $PRIMARY not found" >&2; exit 10; }
+if [ ! -d "$PRIMARY/.git" ]; then
+  echo "ERROR: $PRIMARY is not a git repository — caller must run \`eval \"\$(n8n-agent-prep <owner/repo>)\"\` first" >&2
+  exit 10
+fi
 
 # Fetch the PR head commit (via the pull ref) and the base ref so the diff
 # below is correct. Using FETCH_HEAD is enough because we reference $SHA

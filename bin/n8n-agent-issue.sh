@@ -30,8 +30,11 @@ if [ -z "$ISSUE" ] || [ -z "$PROMPT_B64" ]; then
   exit 2
 fi
 
-PRIMARY="$HOME/workspace"
-WT_ROOT="$HOME/workspace-worktrees"
+# cwd is the per-repo workspace established by n8n-agent-prep
+# (~/workspaces/<owner>__<repo>); worktrees go in a sibling dir so they
+# stay scoped to that repo.
+PRIMARY="$PWD"
+WT_ROOT="${PRIMARY}-worktrees"
 WT_DIR="$WT_ROOT/issue-$ISSUE"
 BRANCH="agent/issue-$ISSUE"
 PROMPT_FILE="/tmp/prompt-issue-$ISSUE.txt"
@@ -42,7 +45,11 @@ cleanup() {
   git worktree prune >/dev/null 2>&1
 }
 
-cd "$PRIMARY" || { echo "ERROR: $PRIMARY not found" >&2; echo "PR_URL="; exit 10; }
+if [ ! -d "$PRIMARY/.git" ]; then
+  echo "ERROR: $PRIMARY is not a git repository — caller must run \`eval \"\$(n8n-agent-prep <owner/repo>)\"\` first" >&2
+  echo "PR_URL="
+  exit 10
+fi
 
 # Idempotency: GitHub fires several events per issue (opened, labeled,
 # assigned) and the workflow filter accepts all of them, so the same issue

@@ -26,8 +26,11 @@ if [ -z "$PR" ] || [ -z "$BRANCH" ] || [ -z "$PROMPT_B64" ]; then
   exit 2
 fi
 
-PRIMARY="$HOME/workspace"
-WT_ROOT="$HOME/workspace-worktrees"
+# cwd is the per-repo workspace established by n8n-agent-prep
+# (~/workspaces/<owner>__<repo>); worktrees go in a sibling dir so they
+# stay scoped to that repo.
+PRIMARY="$PWD"
+WT_ROOT="${PRIMARY}-worktrees"
 WT_DIR="$WT_ROOT/pr-$PR-comment-$CID"
 PROMPT_FILE="/tmp/fix-$PR-$CID.txt"
 
@@ -37,7 +40,10 @@ cleanup() {
   git worktree prune >/dev/null 2>&1
 }
 
-cd "$PRIMARY" || { echo "ERROR: $PRIMARY not found" >&2; exit 10; }
+if [ ! -d "$PRIMARY/.git" ]; then
+  echo "ERROR: $PRIMARY is not a git repository — caller must run \`eval \"\$(n8n-agent-prep <owner/repo>)\"\` first" >&2
+  exit 10
+fi
 
 git fetch origin "$BRANCH" 2>&1
 
