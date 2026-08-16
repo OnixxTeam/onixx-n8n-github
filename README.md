@@ -357,11 +357,16 @@ docker build --platform=linux/arm64 -f Dockerfile.base \
 ```
 
 Grab the manager's fan-out pubkey, paste it into every
-`employees/<login>.env` as `MANAGER_SSH_PUBKEY`, restart the employees:
+`employees/<login>.env` as `MANAGER_SSH_PUBKEY`, then **recreate** the
+employees — `docker compose restart` reuses the container's existing
+environment and never re-reads the edited `env_file`, which leaves
+`authorized_keys` empty and the manager stuck on
+`Permission denied (publickey)`:
 
 ```bash
 docker logs onym-manager-agent | grep -A2 MANAGER_SSH_PUBKEY
-docker compose restart $(jq -r '.employees | keys[] | "\(.)-agent"' employees.json | tr '\n' ' ')
+docker compose up -d --force-recreate \
+    $(jq -r '.employees | keys[] | "\(.)-agent"' employees.json | tr '\n' ' ')
 ```
 
 (`docker compose` needs no `-f` flags anywhere: `COMPOSE_FILE` in `.env`
