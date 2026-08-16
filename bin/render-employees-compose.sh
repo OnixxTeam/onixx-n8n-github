@@ -42,9 +42,9 @@ fi
 # Source of truth: employees.json. Re-generate with:
 #   ./bin/render-employees-compose.sh
 #
-# Loaded as an overlay alongside docker-compose.dev.yml:
-#   docker compose -f docker-compose.dev.yml -f docker-compose.employees.yml ...
-# bin/up.sh and bin/down.sh handle this for you.
+# Loaded as an overlay alongside the workstation compose file. Both are
+# named in COMPOSE_FILE in .env, so a plain `docker compose ...` in this
+# directory picks them up; bin/up.sh renders this file first.
 
 services:
 HDR
@@ -176,8 +176,8 @@ done <<<"$EMPLOYEES"
     cat <<'NETS'
 networks:
   # employees-net is shared by manager-agent (defined in
-  # docker-compose.dev.yml) and every employee. n8n is NOT on this net —
-  # n8n only reaches the manager via orchestration.
+  # the workstation compose file) and every employee. n8n is NOT on this
+  # net — it reaches the manager over SSH from the other machine.
   employees-net:
     name: onym-n8n_employees-net
     driver: bridge

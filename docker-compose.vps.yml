@@ -1,0 +1,59 @@
+# Hybrid split — VPS half: n8n only.
+#
+# The manager and the employee agents run on a separate machine (the Mac),
+# see docker-compose.mac.yml. n8n reaches the manager over SSH across the
+# Tailscale network — configure the target in
+# n8n/secrets/ssh-manager-agent.json (host = Mac's Tailscale IP, port 2200).
+#
+# TLS and the public hostname are handled by the VPS's own nginx, which
+# proxies to the loopback port published below — see
+# nginx/n8n.conf.example. There is no Caddy container in this half; the
+# Caddy path lives on in docker-compose.dev.yml for single-host installs.
+#
+# Bring up with:
+#   docker compose -f docker-compose.vps.yml up -d
+#
+# Files this half needs on disk:
+#   n8n.env, n8n/workflows/, n8n/secrets/*.json
+# It does NOT need caddy.env, Caddyfile, manager.env, employees.json
+# or employees/*.env.
+#
+# No `platform:` pins here — the images resolve to the VPS's own
+# architecture, so this half runs on x86_64 or arm64 alike.
+
+name: onym-n8n
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: onym-n8n
+    hostname: n8n
+    env_file:
+      # required: true — n8n.env carries N8N_ENCRYPTION_KEY. If it silently
+      # fails to load, n8n generates a fresh key and every previously stored
+      # credential becomes undecryptable. Fail fast instead.
+      - path: ./n8n.env
+        required: true
+    environment:
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: https
+      N8N_SECURE_COOKIE: "true"
+      N8N_PROXY_HOPS: "1"
+      # Tuned down for a small VPS: n8n alone on ~3 GB of RAM.
+      NODE_OPTIONS: "--max-old-space-size=1024"
+      N8N_PAYLOAD_SIZE_MAX: "16"
+      N8N_DEFAULT_BINARY_DATA_MODE: "filesystem"
+    ports:
+      # Loopback only. The host's nginx proxies here; nothing else on the
+      # box or the network can reach it. Also what bin/doctor.sh's /healthz
+      # probe hits.
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    restart: unless-stopped
+    mem_limit: 1500m
+    memswap_limit: 2g
+
+volumes:
+  n8n-data:

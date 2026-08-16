@@ -9,8 +9,10 @@
 # Use 'manager' as <login> to reset the manager-agent container.
 set -euo pipefail
 
-DEV_ENV_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-cd "$DEV_ENV_DIR"
+. "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/_stack.sh"
+stack_need_role workstation
+
+DEV_ENV_DIR="$STACK_DIR"
 
 LOGIN="${1:-}"
 if [ -z "$LOGIN" ]; then
@@ -36,18 +38,19 @@ fi
 
 ./bin/render-employees-compose.sh >/dev/null
 
-OVERLAY=""
-[ -f docker-compose.employees.yml ] && OVERLAY="-f docker-compose.employees.yml"
+stack_check_compose
 
 echo "==> stopping ${SERVICE}"
-docker compose -f docker-compose.dev.yml ${OVERLAY} stop "$SERVICE" || true
-docker compose -f docker-compose.dev.yml ${OVERLAY} rm -f "$SERVICE" || true
+docker compose stop "$SERVICE" || true
+docker compose rm -f "$SERVICE" || true
 
 echo "==> removing volumes ($HOME_VOL, $CACHE_VOL)"
+echo "    (this also deletes this container's Claude subscription login —"
+echo "     re-run: docker exec -it -u agent $CONTAINER claude  → /login)"
 docker volume rm "$HOME_VOL" "$CACHE_VOL" 2>&1 || true
 
 echo "==> rebuilding ${SERVICE}"
-docker compose -f docker-compose.dev.yml ${OVERLAY} up -d --build "$SERVICE"
+docker compose up -d --build "$SERVICE"
 
 echo
 echo "==> new public key (authorise upstream as needed):"

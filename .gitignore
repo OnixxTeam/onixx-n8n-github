@@ -6,7 +6,11 @@ docker-compose.employees.yml
 employees/
 n8n/credentials.json
 n8n/secrets/
+nginx/n8n.conf
 keys/
+
+# Local CodeGraph index.
+.codegraph/
 
 # macOS Finder metadata.
 .DS_Store

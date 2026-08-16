@@ -1,0 +1,59 @@
+# nginx reverse proxy for n8n — drop-in replacement for the Caddy ingress.
+#
+# Use this when the VPS already runs nginx for the domain. Copy to
+# /etc/nginx/sites-available/n8n.conf, replace n8n.example.com with the
+# value of N8N_HOST in n8n.env, then:
+#
+#   ln -s /etc/nginx/sites-available/n8n.conf /etc/nginx/sites-enabled/
+#   nginx -t && systemctl reload nginx
+#   certbot --nginx -d n8n.example.com
+#
+# certbot rewrites this file in place, adding the listen 443 / ssl_certificate
+# lines and the :80 → :443 redirect. Everything below stays as written.
+#
+# Requires n8n to publish 127.0.0.1:5678 on this host — that is what
+# docker-compose.vps.yml already does. If your nginx runs inside a container
+# instead, proxy_pass must target the n8n container over a shared docker
+# network (http://n8n:5678) rather than 127.0.0.1.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name n8n.example.com;
+
+    # Matches N8N_PAYLOAD_SIZE_MAX=16 in docker-compose.vps.yml. GitHub
+    # webhook payloads are far smaller, but n8n's editor posts larger bodies.
+    client_max_body_size 16m;
+
+    # Browsers pin HTTPS for a year. Only meaningful once certbot has added
+    # the TLS listener below; harmless before that.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:5678;
+        proxy_http_version 1.1;
+
+        # n8n reads these because N8N_PROXY_HOPS=1. Without
+        # X-Forwarded-Proto it issues Secure cookies over what it believes
+        # is plain HTTP and the login silently fails.
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host  $host;
+
+        # The editor UI keeps a websocket open for execution push events.
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # The push stream is long-lived. Webhook deliveries themselves return
+        # immediately (every workflow uses responseMode: onReceived), so this
+        # timeout only guards the editor connection.
+        proxy_read_timeout  3600s;
+        proxy_send_timeout  3600s;
+
+        # Don't buffer the push stream — otherwise the editor's live
+        # execution log arrives in chunks or stalls.
+        proxy_buffering off;
+    }
+}

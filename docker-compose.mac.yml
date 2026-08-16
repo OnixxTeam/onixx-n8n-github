@@ -1,0 +1,87 @@
+# Hybrid split — Mac half: manager-agent + the employee agents.
+#
+# n8n and Caddy live on the VPS (docker-compose.vps.yml). The only thing
+# crossing the machine boundary is one inbound SSH connection: VPS n8n →
+# this manager, over Tailscale.
+#
+# Bring up with:
+#   ./bin/render-employees-compose.sh
+#   docker compose -f docker-compose.mac.yml -f docker-compose.employees.yml \
+#       up -d --build
+#
+# Files this half needs on disk:
+#   manager.env, employees.json, employees/*.env,
+#   manager/routing-prompt.tmpl, Dockerfile.base, Dockerfile.agent
+# It does NOT need n8n.env, caddy.env or n8n/secrets/.
+#
+# MANAGER_SSH_BIND — the host IP the manager's sshd is published on. Set it
+# to THIS machine's Tailscale IP (100.x.y.z) in a `.env` file next to this
+# one, so only tailnet peers can reach it:
+#
+#   echo 'MANAGER_SSH_BIND=100.x.y.z' > .env
+#
+# The 127.0.0.1 default is deliberately useless from the VPS — it fails
+# closed rather than exposing sshd to the local network by accident.
+
+name: onym-n8n
+
+services:
+  manager-agent:
+    image: onym-n8n/dev-env-agent:latest
+    platform: linux/arm64
+    container_name: onym-manager-agent
+    hostname: manager-agent
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+      platforms:
+        - linux/arm64
+    tmpfs:
+      - /run
+      - /run/sshd
+    cap_drop: [ALL]
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - FOWNER
+      - NET_BIND_SERVICE
+      - SYS_CHROOT
+      - AUDIT_WRITE
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    environment:
+      ROLE: manager
+      EMPLOYEE_LOGIN: manager
+      NODE_OPTIONS: "--max-old-space-size=2048"
+    env_file:
+      - path: ./manager.env
+        required: true
+    ports:
+      # Inbound SSH from the VPS's n8n. Must match host + port in
+      # n8n/secrets/ssh-manager-agent.json on the VPS.
+      - "${MANAGER_SSH_BIND:-127.0.0.1}:2200:22"
+    volumes:
+      - manager-home:/home/agent
+      - manager-cache:/cache
+      # Read-only so a compromised manager cannot rewrite its own routing
+      # config. Edit either file on the host and the next dispatch picks the
+      # change up — no rebuild, no restart.
+      - ./employees.json:/etc/onym/employees.json:ro
+      - ./manager/routing-prompt.tmpl:/etc/onym/routing-prompt.tmpl:ro
+    networks:
+      - employees-net
+    mem_limit: 2g
+    memswap_limit: 3g
+    cpus: 1.5
+
+volumes:
+  manager-home:
+  manager-cache:
+
+networks:
+  employees-net:
+    name: onym-n8n_employees-net
+    driver: bridge

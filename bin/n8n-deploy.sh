@@ -10,9 +10,10 @@
 #   - jq on the host
 set -euo pipefail
 
-DEV_ENV_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-cd "$DEV_ENV_DIR"
+. "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/_stack.sh"
+stack_need_role vps
 
+DEV_ENV_DIR="$STACK_DIR"
 N8N_CONTAINER="onym-n8n"
 SECRETS_DIR="$DEV_ENV_DIR/n8n/secrets"
 SECRETS_EXAMPLE_DIR="$DEV_ENV_DIR/n8n/secrets.example"
@@ -236,7 +237,7 @@ done
 # /webhook/<path> routes. Restart so freshly-imported workflows can
 # actually receive events.
 echo "  restarting n8n so webhook routes register..."
-docker compose -f docker-compose.dev.yml restart n8n >/dev/null
+docker compose restart n8n >/dev/null
 for _ in $(seq 1 60); do
     if docker exec "$N8N_CONTAINER" \
          sh -c 'wget -qO- --tries=1 --timeout=1 http://127.0.0.1:5678/healthz' \
