@@ -105,8 +105,7 @@ while IFS= read -r LOGIN; do
       NODE_OPTIONS: "--max-old-space-size=6144"
       GRADLE_OPTS: "-Xmx4g -Dorg.gradle.jvmargs=-Xmx4g"
     env_file:
-      - path: ${ENV_FILE}
-        required: false
+      - ${ENV_FILE}
 EMP
 
         if [ -n "$SSH_HOST_PORT" ]; then

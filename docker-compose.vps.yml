@@ -28,12 +28,13 @@ services:
     image: n8nio/n8n:latest
     container_name: onym-n8n
     hostname: n8n
+    # Short form (not the `- path:/required:` long form) so this file still
+    # parses on Docker Compose < 2.24. A missing file is a hard error in both
+    # forms, which is what matters here: n8n.env carries N8N_ENCRYPTION_KEY,
+    # and if it silently failed to load n8n would generate a fresh key and
+    # leave every stored credential undecryptable.
     env_file:
-      # required: true — n8n.env carries N8N_ENCRYPTION_KEY. If it silently
-      # fails to load, n8n generates a fresh key and every previously stored
-      # credential becomes undecryptable. Fail fast instead.
-      - path: ./n8n.env
-        required: true
+      - ./n8n.env
     environment:
       N8N_PORT: "5678"
       N8N_PROTOCOL: https

@@ -56,9 +56,11 @@ services:
       ROLE: manager
       EMPLOYEE_LOGIN: manager
       NODE_OPTIONS: "--max-old-space-size=2048"
+    # Short form (not the `- path:/required:` long form) so this file still
+    # parses on Docker Compose < 2.24. Semantics are identical: a missing
+    # manager.env is a hard error either way.
     env_file:
-      - path: ./manager.env
-        required: true
+      - ./manager.env
     ports:
       # Inbound SSH from the VPS's n8n. Must match host + port in
       # n8n/secrets/ssh-manager-agent.json on the VPS.

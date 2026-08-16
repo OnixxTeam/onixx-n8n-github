@@ -267,9 +267,10 @@ changes, no n8n credential changes — but do add the login to
 
 ## Prerequisites
 
-- **Docker Compose ≥ 2.24** on both machines. The compose files use the
-  long `env_file: [{path, required}]` form; older versions fail with
-  `services.n8n.env_file.0 must be a string`.
+- **Docker Compose v2** on both machines. The compose files deliberately use
+  the short `env_file: [./file.env]` form so they also parse on versions
+  older than 2.24 — the long `{path, required}` form fails there with
+  `services.n8n.env_file.0 must be a string`. Keep it that way when editing.
 - `jq`, `git`, `openssl`, `ssh-keygen` on both machines.
 - The agent image is built `--platform=linux/arm64`. On an x86 host,
   drop the `platform:` / `platforms:` keys from `docker-compose.mac.yml`

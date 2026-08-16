@@ -17,7 +17,7 @@ set -euo pipefail
 
 stack_need_cmds docker jq
 docker compose version >/dev/null 2>&1 \
-    || stack_die "docker compose plugin missing (need >= 2.24 for the env_file long form)"
+    || stack_die "docker compose plugin missing"
 docker info >/dev/null 2>&1 || stack_die "docker daemon not running"
 
 # ---------------------------------------------------------------- vps half --
