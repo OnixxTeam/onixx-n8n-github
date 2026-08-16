@@ -199,6 +199,32 @@ for c in $AGENT_CONTAINERS; do
 done
 
 echo
+echo "== token identity matches employees.json =="
+# The single most damaging silent misconfiguration. The dispatcher builds its
+# bot-loop guard from the logins in employees.json, but each container
+# actually comments as whoever its PAT belongs to. If the two disagree, the
+# manager cannot recognise its own routing comment: that comment @-mentions
+# an agent, which re-triggers the mention workflow, which posts another
+# routing comment — an unbounded loop that looks like a working system until
+# the thread fills up.
+MGR_LOGIN=$(jq -r '.manager.githubLogin // ""' employees.json 2>/dev/null)
+ACTUAL=$(docker exec -u agent onym-manager-agent \
+    env -u GITHUB_TOKEN -u GH_TOKEN gh api user --jq .login 2>/dev/null | tr -d '\r')
+note "manager: employees.json=$MGR_LOGIN  PAT identity=${ACTUAL:-unknown}"
+check "manager PAT identity == manager.githubLogin" \
+    bash -c "test -n '$ACTUAL' -a '$ACTUAL' = '$MGR_LOGIN'"
+
+while IFS= read -r LOGIN; do
+    [ -z "$LOGIN" ] && continue
+    WANT=$(jq -r --arg l "$LOGIN" '.employees[$l].githubLogin // ""' employees.json)
+    GOT=$(docker exec -u agent "onym-${LOGIN}-agent" \
+        env -u GITHUB_TOKEN -u GH_TOKEN gh api user --jq .login 2>/dev/null | tr -d '\r')
+    note "$LOGIN: employees.json=$WANT  PAT identity=${GOT:-unknown}"
+    check "$LOGIN PAT identity == githubLogin" \
+        bash -c "test -n '$GOT' -a '$GOT' = '$WANT'"
+done <<<"$EMPLOYEES"
+
+echo
 echo "== n8n-agent helpers =="
 # Catches an image rebuilt without picking up new scripts, leaving agents
 # with a stale set of /usr/local/bin entries.
