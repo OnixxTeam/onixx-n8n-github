@@ -123,7 +123,7 @@ Next:
      employees/<login>.env, then RECREATE the employees:
        docker compose up -d --force-recreate $(stack_employees | sed 's/$/-agent/' | tr '\n' ' ')
 
-     Not \`restart\` — that reuses the container's existing environment and
+     Not `restart` — that reuses the container's existing environment and
      silently ignores the edited env_file, leaving authorized_keys empty.
 
   2. Log Claude in on every container (subscription, no API key) — the
